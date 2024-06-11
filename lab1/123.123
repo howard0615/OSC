@@ -1,0 +1,47 @@
+.section ".text.boot"
+
+.global _start
+
+// This marks the _start label as a global symbol, making it accessible from other files or the linker as the entry point of the program.
+// This directive places the following code in the .text.boot section, which is typically used for early boot code
+
+_start:
+    // read cpu id, stop slave cores, only use primary core.
+    // This instruction reads the Multiprocessor Affinity Register (MPIDR_EL1) into register x1, which contains the CPU ID.
+	mrs     x1, mpidr_el1
+    // This masks out all but the lower two bits of x1, which effectively isolates the CPU ID.
+	and     x1, x1, #3
+    // This checks if the CPU ID is zero (the primary core). If it is, it branches to the setting label.
+	cbz     x1, setting
+    // cpu id > 0, stop
+
+halt: 	wfe
+    // halt: If the CPU ID is not zero, the core executes a wait-for-event (wfe) instruction to halt and enters an infinite loop, effectively stopping any secondary cores.
+	b	halt
+    // This instruction causes an unconditional jump to the label halt. In this context, it creates an infinite loop, continually executing the wfe instruction.
+
+setting:
+     //  Load the address of _start into register x1.
+	ldr x1, =_start
+     // Set the stack pointer (sp) to the value in x1. This is a temporary stack setup.
+	mov sp, x1
+     // Load the address of the beginning of the BSS section (uninitialized data) into x1.
+	ldr x1, =__bss_start
+     //  Load the size of the BSS section into w2.
+	ldr w2, =__bss_size
+
+clear_bss: 
+       // If the BSS size (w2) is zero, branch to kernel_main.
+	cbz w2, kernel_main
+       // Store a zero (xzr) at the address in x1, then increment x1 by 8 bytes.
+	str xzr,[x1],#8
+       // Decrement the BSS size counter (w2).
+	sub w2, w2, #1
+       //  If w2 is not zero, branch back to clear_bss to clear the next 8 bytes.
+	cbnz w2, clear_bss
+
+kernel_main:
+     //  Branch with link to the main function. This transfers control to the kernel's main function.
+	bl main
+     //  After returning from main, branch to halt to stop the core.
+	b  halt
